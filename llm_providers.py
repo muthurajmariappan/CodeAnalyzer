@@ -5,14 +5,16 @@ Abstract interface for different LLM providers (OpenAI, Ollama, etc.) using Lang
 """
 
 from abc import ABC, abstractmethod
-from typing import Dict, List, Optional, Any
-from rag_embedder import RAGEmbedder
-import json
+from typing import Dict, List, Optional
+
+from langchain_core.embeddings import Embeddings
+from langchain_ollama import OllamaEmbeddings
+from langchain_openai import OpenAIEmbeddings
 
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers using LangChain."""
-    
+
     @abstractmethod
     def invoke(self, prompt: str, **kwargs) -> str:
         """
@@ -26,7 +28,7 @@ class LLMProvider(ABC):
             Generated text response
         """
         pass
-    
+
     @abstractmethod
     def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """
@@ -40,9 +42,9 @@ class LLMProvider(ABC):
             Generated text response
         """
         pass
-    
+
     @abstractmethod
-    def get_max_tokens(self, model: str) -> int:
+    def get_max_tokens(self) -> int:
         """
         Get maximum context tokens for a model.
         
@@ -54,11 +56,39 @@ class LLMProvider(ABC):
         """
         pass
 
+    @abstractmethod
+    def get_embeddings(self) -> Embeddings:
+        """
+        Get the LangChain Embeddings instance
+
+        Returns:
+            LangChain Embeddings instance
+        """
+
+    @abstractmethod
+    def get_model(self) -> str:
+        """
+        Get the model name
+
+        Returns:
+            Model name
+        """
+
+    @abstractmethod
+    def get_provider_type(self) -> str:
+        """
+        Get the provider type
+
+        Returns:
+            provider type
+        """
+
 
 class OpenAIProvider(LLMProvider):
     """OpenAI LLM provider using LangChain."""
-    
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini"):
+
+    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini",
+                 embedding_model: str = "text-embedding-3-small"):
         """
         Initialize OpenAI provider.
         
@@ -74,46 +104,47 @@ class OpenAIProvider(LLMProvider):
                 "langchain-openai package is required for OpenAI provider. "
                 "Install it with: pip install langchain-openai"
             )
-        
+
         self.api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not self.api_key:
             raise ValueError(
                 "OpenAI API key not provided. Set OPENAI_API_KEY environment variable "
                 "or pass api_key parameter."
             )
-        
+
         self.model = model
+        self.embedding_model = embedding_model
         self.llm = ChatOpenAI(
             model=model,
             api_key=self.api_key,
             temperature=0.3
         )
-    
+
     def invoke(self, prompt: str, **kwargs) -> str:
         """Invoke the LLM with a prompt."""
         return self.llm.invoke(prompt, **kwargs).content
-    
+
     def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Invoke the LLM with messages."""
         from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
-        
+
         # Convert messages to LangChain message format
         langchain_messages = []
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            
+
             if role == "system":
                 langchain_messages.append(SystemMessage(content=content))
             elif role == "user":
                 langchain_messages.append(HumanMessage(content=content))
             elif role == "assistant":
                 langchain_messages.append(AIMessage(content=content))
-        
+
         response = self.llm.invoke(langchain_messages, **kwargs)
         return response.content
-    
-    def get_max_tokens(self, model: str) -> int:
+
+    def get_max_tokens(self) -> int:
         """Get maximum context tokens for OpenAI models."""
         max_tokens_map = {
             "gpt-4o": 128000,
@@ -123,13 +154,26 @@ class OpenAIProvider(LLMProvider):
             "gpt-3.5-turbo": 16385,
             "gpt-3.5-turbo-16k": 16385,
         }
-        return max_tokens_map.get(model, 4096)  # Default conservative limit
+        return max_tokens_map.get(self.model, 4096)  # Default conservative limit
+
+    def get_embeddings(self) -> Embeddings:
+        return OpenAIEmbeddings(
+            model=self.embedding_model,
+            openai_api_key=self.api_key
+        )
+
+    def get_model(self) -> str:
+        return self.model
+
+    def get_provider_type(self) -> str:
+        return "openai"
 
 
 class OllamaProvider(LLMProvider):
     """Ollama LLM provider using LangChain."""
-    
-    def __init__(self, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
+
+    def __init__(self, model: str = "llama3.2", embedding_model: str = "embeddinggemma",
+                 base_url: str = "http://localhost:11434"):
         """
         Initialize Ollama provider.
         
@@ -146,22 +190,23 @@ class OllamaProvider(LLMProvider):
                 "Install it with: pip install langchain-community"
             )
 
-        print('#####base_url - ' + base_url)            
+        print('#####base_url - ' + base_url)
         print('#####model - ' + model)
 
         self.model = model
+        self.embedding_model = embedding_model
         self.base_url = base_url
         self.llm = ChatOllama(
-            model="devstral-small-2",#gemma3:270m llama3.2:1b gpt-oss qwen2.5-coder devstral-small-2
+            model=self.model,
             base_url=base_url,
             temperature=0.3
         )
-    
+
     def invoke(self, prompt: str, **kwargs) -> str:
         """Invoke the LLM with a prompt."""
         print(f"invoking ollama with {len(prompt)} length")
         return self.llm.invoke(prompt, **kwargs)
-    
+
     def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> str:
         """Invoke the LLM with messages."""
         # Convert messages to a single prompt for Ollama
@@ -170,14 +215,14 @@ class OllamaProvider(LLMProvider):
         for msg in messages:
             role = msg.get("role", "user")
             content = msg.get("content", "")
-            
+
             if role == "system":
                 prompt_parts.append(("system", content))
             elif role == "user":
                 prompt_parts.append(("human", content))
             elif role == "assistant":
                 prompt_parts.append(("Assistant", content))
-        
+
         print(f"the prompt_parts {len(prompt_parts)}")
         # prompt = "\n\n".join(prompt_parts)
         # print(f"the prompt_parts {prompt_parts}")
@@ -189,8 +234,8 @@ class OllamaProvider(LLMProvider):
             ("human", "I love programming."),
         ]
         return self.llm.invoke(messages, **kwargs)
-    
-    def get_max_tokens(self, model: str) -> int:
+
+    def get_max_tokens(self) -> int:
         """
         Get maximum context tokens for Ollama models.
         
@@ -199,8 +244,19 @@ class OllamaProvider(LLMProvider):
         """
         return 32768  # Default for most modern open source models
 
+    def get_embeddings(self) -> Embeddings:
+        return OllamaEmbeddings(
+            model=self.embedding_model,  # llama3.2:1b
+        )
 
-def create_llm_provider(provider_type: str, model: str, rag: RAGEmbedder = None, **kwargs) -> LLMProvider:
+    def get_model(self) -> str:
+        return self.model
+
+    def get_provider_type(self) -> str:
+        return "ollama"
+
+
+def create_llm_provider(provider_type: str, model: str, embedding_model: str, **kwargs) -> LLMProvider:
     """
     Factory function to create an LLM provider.
     
@@ -213,12 +269,17 @@ def create_llm_provider(provider_type: str, model: str, rag: RAGEmbedder = None,
         LLMProvider instance
     """
     provider_type = provider_type.lower()
-    
+
     if provider_type == "openai":
-        return OpenAIProvider(api_key=kwargs.get("api_key"), model=model)
+        return OpenAIProvider(
+            api_key=kwargs.get("api_key"),
+            model=model,
+            embedding_model=embedding_model
+        )
     elif provider_type == "ollama":
         return OllamaProvider(
             model=model,
+            embedding_model=embedding_model,
             base_url=kwargs.get("base_url", "http://localhost:11434")
         )
     else:

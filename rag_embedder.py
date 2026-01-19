@@ -9,69 +9,23 @@ import shutil
 import tempfile
 from typing import Dict, List, Any, Optional
 from pathlib import Path
-from langchain_ollama import OllamaEmbeddings
-from langchain_openai import OpenAIEmbeddings
 from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 
-# try:
-#     # from langchain_openai import OpenAIEmbeddings
-#     # from langchain_community.vectorstores import Chroma
-#     # from langchain.text_splitter import RecursiveCharacterTextSplitter
-#     # from langchain_core.documents import Document
-#     LANGCHAIN_AVAILABLE = True
-# except ImportError:
-#     LANGCHAIN_AVAILABLE = False
-
-# ChromaDB is optional - only needed for RAG
-try:
-    # from langchain_chroma import chromadb
-    CHROMADB_AVAILABLE = True
-except ImportError:
-    CHROMADB_AVAILABLE = False
-
-
 class RAGEmbedder:
     """Handles RAG (Retrieval-Augmented Generation) with embeddings using LangChain."""
     
-    def __init__(self, api_key: Optional[str] = None, embedding_model: str = "text-embedding-3-small"):
+    def __init__(self, embeddings: Embeddings, db_path: str = None):
         """
         Initialize RAG embedder.
         
         Args:
-            api_key: OpenAI API key (for embeddings)
-            embedding_model: Embedding model to use
+            embeddings: instance of Embeddings
         """
-        # if not LANGCHAIN_AVAILABLE:
-        #     raise RuntimeError(
-        #         "LangChain is not installed. RAG functionality requires langchain. "
-        #         "Install it with: pip install langchain langchain-openai langchain-community langchain-chroma"
-        #     )
-        
-        if not CHROMADB_AVAILABLE:
-            raise RuntimeError(
-                "ChromaDB is not installed. RAG functionality requires chromadb. "
-                "Install it with: pip install chromadb, or use --no-rag flag."
-            )
-        
-        # Initialize embeddings
-        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
-        if not self.api_key:
-            raise ValueError(
-                "OpenAI API key not provided for embeddings. Set OPENAI_API_KEY environment variable."
-            )
-        
-        self.embedding_model = embedding_model
-        # self.embeddings = OpenAIEmbeddings(
-        #     model=embedding_model,
-        #     openai_api_key=self.api_key
-        # )
-        self.embeddings = OllamaEmbeddings(
-            model="embeddinggemma",#llama3.2:1b
-        )
-        
+        self.embeddings = embeddings
+
         # Initialize text splitter
         self.text_splitter = RecursiveCharacterTextSplitter(
             chunk_size=1000,
@@ -82,15 +36,17 @@ class RAGEmbedder:
         
         # Vector store
         self.vectorstore = None
-        self.temp_db_path = None
+        if db_path is None:
+            self.temp_db_path = tempfile.mkdtemp(prefix="chroma_db_")
+        else:
+            self.temp_db_path = db_path
     
     def initialize_db(self, repo_name: str):
         """Initialize ChromaDB vector store for this repository."""
-        if not CHROMADB_AVAILABLE:
-            raise RuntimeError("ChromaDB is not available. Cannot initialize database.")
         
         # self.temp_db_path = tempfile.mkdtemp(prefix="chroma_db_")
-        self.temp_db_path = "D:\\self\\CodeAnalyzer\\chroma"
+        # self.temp_db_path = "D:\\self\\CodeAnalyzer\\chroma"
+        print(f"the vector db is at {self.temp_db_path}")
         
         # Create collection name
         collection_name = f"repo_{repo_name.replace('/', '_').replace('-', '_')}"

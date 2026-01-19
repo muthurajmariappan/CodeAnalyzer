@@ -17,6 +17,7 @@ class TokenCounter:
         Args:
             model: LLM model name to get encoding for
         """
+        print(f"model to token counter is {model}")
         self.model = model
         try:
             # Map model names to their encodings
