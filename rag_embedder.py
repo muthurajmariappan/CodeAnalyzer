@@ -7,12 +7,12 @@ Handles RAG (Retrieval-Augmented Generation) with embeddings using LangChain.
 import os
 import shutil
 import tempfile
-from typing import Dict, List, Any, Optional
-from pathlib import Path
+from typing import Dict, List, Any
+
+from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.documents import Document
-from langchain_chroma import Chroma
+
 
 class RAGEmbedder:
     """Handles RAG (Retrieval-Augmented Generation) with embeddings using LangChain."""
@@ -44,8 +44,6 @@ class RAGEmbedder:
     def initialize_db(self, repo_name: str):
         """Initialize ChromaDB vector store for this repository."""
         
-        # self.temp_db_path = tempfile.mkdtemp(prefix="chroma_db_")
-        # self.temp_db_path = "D:\\self\\CodeAnalyzer\\chroma"
         print(f"the vector db is at {self.temp_db_path}")
         
         # Create collection name

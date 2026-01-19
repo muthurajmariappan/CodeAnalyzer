@@ -2,6 +2,7 @@ import os
 import shutil
 import subprocess
 import tempfile
+import traceback
 from pathlib import Path
 from typing import Dict
 from urllib.parse import urlparse
@@ -72,7 +73,7 @@ class GitRAGLoader:
         # Common ignore patterns
         ignore_patterns = {
             ".git", ".github", "__pycache__", "node_modules", ".venv", "venv",
-            "env", ".env", "dist", "build", ".pytest_cache", ".mypy_cache",
+            "env", ".env", "dist", ".editorconfig", ".pytest_cache", ".mypy_cache",
             ".idea", ".vscode", "*.pyc", "*.pyo", "*.pyd", ".DS_Store",
             "*.egg-info", ".coverage", "htmlcov", ".tox", ".chroma"
         }
@@ -82,7 +83,8 @@ class GitRAGLoader:
             ".py", ".js", ".ts", ".jsx", ".tsx", ".java", ".cpp", ".c", ".h",
             ".hpp", ".cs", ".go", ".rs", ".rb", ".php", ".swift", ".kt",
             ".scala", ".clj", ".sh", ".yaml", ".yml", ".json", ".xml",
-            ".html", ".css", ".scss", ".md", ".txt", ".dockerfile", ".sql"
+            ".html", ".css", ".scss", ".md", ".txt", ".dockerfile", ".sql",
+            ".kts", ".properties"
         }
 
         print(f"Reading files from repository (max {self.max_files} files)...")
@@ -92,10 +94,10 @@ class GitRAGLoader:
             dirs[:] = [d for d in dirs if not any(
                 pattern in d.lower() for pattern in ignore_patterns
             )]
-
+            print(f"{len(filenames)} {filenames} files discovered")
             for filename in filenames:
                 if file_count >= self.max_files:
-                    print(f"Reached maximum file limit ({self.max_files}). Stopping.")
+                    print(f"Reached maximum file limit ({self.max_files}). Stopping for {filename}.")
                     break
 
                 file_path = Path(root) / filename
@@ -117,6 +119,7 @@ class GitRAGLoader:
                             if len(content) > 100000:  # ~100KB
                                 content = content[:100000] + "\n... (truncated)"
                             files_content[str(relative_path)] = content
+                            print(f"{relative_path} with size {len(content)} added to files")
                             file_count += 1
                     except Exception as e:
                         print(f"Warning: Could not read {relative_path}: {e}")
@@ -159,7 +162,7 @@ class GitRAGLoader:
             raise ValueError("No files found in repository.")
 
         # Embed repository using RAG
-        self.embed_repository(files_content)
+        # self.embed_repository(files_content)
 
         return files_content
 

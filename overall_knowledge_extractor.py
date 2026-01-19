@@ -71,6 +71,7 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
         for path, content in files_content.items():
             path_lower = path.lower()
             if any(keyword in path_lower for keyword in ['readme', 'main', 'app', 'index', 'setup', 'requirements']):
+                print(f"{path} added to key files list")
                 key_files.append((path, content))
                 if len(key_files) >= 5:
                     break
@@ -78,6 +79,9 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
         print(f"retrieved chunks {len(retrieved_chunks)} from vector store")
         print(f"unique chunks {len(unique_chunks)} after dedup")
         print(f"key_files {len(key_files)}")
+
+        with open("D:\\self\\CodeAnalyzer\\out\\" + "o-rag.txt", "w") as file:
+            file.write(str(retrieved_chunks))
 
         # Prepare content for LLM
         files_text_parts = []
@@ -113,54 +117,48 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
         if self.rag is not None:
             rag_note = "\nThe repository has been analyzed using RAG (Retrieval-Augmented Generation) to identify the most relevant code sections.\n"
 
-        prompt = f"""Analyze the following codebase from a GitHub repository ({self.repo_url}) and extract structured knowledge.{rag_note}
-Repository Files and Relevant Code Sections:
-{files_text}
-
-Please provide a comprehensive analysis in JSON format with the following structure:
-{{
-    "programming_languages": ["list", "of", "languages", "detected"],
-    "frameworks": ["list", "of", "frameworks", "and", "libraries"],
-    "classes": [
-        {{
-            "name": "ClassName",
-            "file": "path/to/file.py",
-            "description": "Brief description",
-            "methods": ["method1", "method2"]
-        }}
-    ],
-    "functions": [
-        {{
-            "name": "function_name",
-            "file": "path/to/file.py",
-            "description": "Brief description",
-            "parameters": ["param1", "param2"]
-        }}
-    ],
-    "high_level_design": {{
-        "architecture": "Description of overall architecture",
-        "patterns": ["design patterns used"],
-        "key_components": ["component1", "component2"],
-        "data_flow": "Description of how data flows through the system"
-    }},
-    "dependencies": ["list", "of", "key", "dependencies"],
-    "summary": "High-level summary of what this repository does"
-}}
-
-Be thorough and extract as much information as possible. Focus on:
-- All programming languages used
-- Major frameworks, libraries, and tools
-- Important classes and their purposes
-- Key functions and their roles
-- Overall architecture and design patterns
-- How components interact
-"""
-
-        prompt = f"""Analyze the following codebase from a GitHub repository ({self.repo_url}) and extract structured knowledge.{rag_note}
+        prompt = \
+        f"""Analyze the following codebase from a GitHub repository ({self.repo_url}) and extract structured knowledge.{rag_note}
         Repository Files and Relevant Code Sections:
         {files_text}
-
-        Provide concise description of the codebase in the Github repository based on the given information.
+        
+        Please provide a comprehensive analysis in JSON format with the following structure:
+        {{
+            "programming_languages": ["list", "of", "languages", "detected"],
+            "frameworks": ["list", "of", "frameworks", "and", "libraries"],
+            "classes": [
+                {{
+                    "name": "ClassName",
+                    "file": "path/to/file.py",
+                    "description": "Brief description",
+                    "methods": ["method1", "method2"]
+                }}
+            ],
+            "functions": [
+                {{
+                    "name": "function_name",
+                    "file": "path/to/file.py",
+                    "description": "Brief description",
+                    "parameters": ["param1", "param2"]
+                }}
+            ],
+            "high_level_design": {{
+                "architecture": "Description of overall architecture",
+                "patterns": ["design patterns used"],
+                "key_components": ["component1", "component2"],
+                "data_flow": "Description of how data flows through the system"
+            }},
+            "dependencies": ["list", "of", "key", "dependencies"],
+            "summary": "High-level summary of what this repository does"
+        }}
+        
+        Be thorough and extract as much information as possible. Focus on:
+        - All programming languages used
+        - Major frameworks, libraries, and tools
+        - Important classes and their purposes
+        - Key functions and their roles
+        - Overall architecture and design patterns
+        - How components interact
         """
 
         try:
@@ -188,6 +186,12 @@ Be thorough and extract as much information as possible. Focus on:
             if self.llm_provider.get_provider_type() != "openai":
                 messages[-1][
                     "content"] += "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text outside the JSON object."
+
+            with open("D:\\self\\CodeAnalyzer\\out\\" + "o-prompt.txt", "w", encoding='utf-8') as file:
+                file.write(prompt)
+
+            with open("D:\\self\\CodeAnalyzer\\out\\" + "o-messages.txt", "w", encoding='utf-8') as file:
+                file.write(str(messages))
 
             print("invoking llm")
             result_text = self.llm_provider.invoke_with_messages(

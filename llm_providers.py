@@ -233,7 +233,7 @@ class OllamaProvider(LLMProvider):
             ),
             ("human", "I love programming."),
         ]
-        return self.llm.invoke(messages, **kwargs)
+        return self.llm.invoke(prompt_parts, **kwargs)
 
     def get_max_tokens(self) -> int:
         """

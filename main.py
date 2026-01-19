@@ -7,6 +7,8 @@ from github_repo_analyzer import GitHubRepoAnalyzer
 from knowledge_graph import KnowledgeGraph
 from llm_providers import LLMProvider, create_llm_provider
 from overall_knowledge_extractor import OverallKnowledgeExtractor
+from simple_knowledge_extractor import SimpleKnowledgeExtractor
+from dependencies_knowledge_extractor import DependenciesKnowledgeExtractor
 from rag_embedder import RAGEmbedder
 from token_counter import TokenCounter
 
@@ -77,7 +79,7 @@ def main():
         if args.provider == "openai":
             args.model = "gpt-4o-mini"
         elif args.provider == "ollama":
-            args.model = "gemma3:270m"  # gemma3:270m llama3.2:1b gpt-oss qwen2.5-coder devstral-small-2
+            args.model = "llama3.2:1b"  # gemma3:270m llama3.2:1b gpt-oss qwen2.5-coder devstral-small-2
 
     if args.embedding_model is None:
         if args.provider == "openai":
@@ -101,6 +103,8 @@ def main():
         knowledge_graph = KnowledgeGraph()
         git_rag_loader = GitRAGLoader(args.repo_url, repo_name, args.max_files, rag)
         knowledge_extractor = OverallKnowledgeExtractor(args.repo_url, llm_provider, rag, token_counter, knowledge_graph)
+        simple_knowledge_extractor = SimpleKnowledgeExtractor(args.repo_url, llm_provider, rag, token_counter, knowledge_graph)
+        dependencies_knowledge_extractor = DependenciesKnowledgeExtractor(args.repo_url, llm_provider, rag, token_counter, knowledge_graph)
 
         # Create analyzer
         analyzer = GitHubRepoAnalyzer(
@@ -109,7 +113,7 @@ def main():
             token_counter,
             knowledge_graph,
             git_rag_loader,
-            knowledge_extractor,
+            dependencies_knowledge_extractor,
             args.repo_url,
             repo_name,
             args.max_files,
