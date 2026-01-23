@@ -5,12 +5,16 @@ from urllib.parse import urlparse
 from git_rag_loader import GitRAGLoader
 from github_repo_analyzer import GitHubRepoAnalyzer
 from knowledge_graph import KnowledgeGraph
-from llm_providers import LLMProvider, create_llm_provider
+from llm_providers import LLMProvider, create_llm_provider, EmbeddingsProvider, create_embeddings_provider
 from overall_knowledge_extractor import OverallKnowledgeExtractor
 from simple_knowledge_extractor import SimpleKnowledgeExtractor
 from dependencies_knowledge_extractor import DependenciesKnowledgeExtractor
+from classes_knowledge_extractor import ClassesKnowledgeExtractor
+from sample_tool_knowledge_extractor import SampleToolKnowledgeExtractor
+from packages_list_knowledge_extractor import PackagesListKnowledgeExtractor
 from rag_embedder import RAGEmbedder
 from token_counter import TokenCounter
+from tools import Tools
 
 
 def main():
@@ -53,7 +57,7 @@ def main():
     parser.add_argument(
         "--max-files",
         type=int,
-        default=100,
+        default=10000,
         help="Maximum number of files to analyze (default: 100)"
     )
     parser.add_argument(
@@ -97,14 +101,26 @@ def main():
                 "or pass api_key parameter."
             )
         repo_name = get_repo_name(args.repo_url)
-        llm_provider = get_llm_provider(args.provider, api_key, args.model, args.embedding_model, args.ollama_url)
-        rag = get_rag_embedder(repo_name, llm_provider, args.rag_db)
+        embedding_provider = get_embedding_provider(args.provider, args.embedding_model, api_key, args.ollama_url)
+        rag = get_rag_embedder(repo_name, embedding_provider, args.rag_db)
+        tools = Tools(rag)
+        llm_provider = get_llm_provider(tools, args.provider, args.model, api_key, args.ollama_url)
         token_counter = TokenCounter(llm_provider.get_model())
         knowledge_graph = KnowledgeGraph()
         git_rag_loader = GitRAGLoader(args.repo_url, repo_name, args.max_files, rag)
-        knowledge_extractor = OverallKnowledgeExtractor(args.repo_url, llm_provider, rag, token_counter, knowledge_graph)
-        simple_knowledge_extractor = SimpleKnowledgeExtractor(args.repo_url, llm_provider, rag, token_counter, knowledge_graph)
-        dependencies_knowledge_extractor = DependenciesKnowledgeExtractor(args.repo_url, llm_provider, rag, token_counter, knowledge_graph)
+
+        simple_knowledge_extractor = SimpleKnowledgeExtractor(args.repo_url, llm_provider, rag, tools, token_counter,
+                                                              knowledge_graph)
+        dependencies_knowledge_extractor = DependenciesKnowledgeExtractor(args.repo_url, llm_provider, rag, tools,
+                                                                          token_counter, knowledge_graph)
+        classes_knowledge_extractor = ClassesKnowledgeExtractor(args.repo_url, llm_provider, rag, tools, token_counter,
+                                                                knowledge_graph)
+        overall_knowledge_extractor = OverallKnowledgeExtractor(args.repo_url, llm_provider, rag, tools, token_counter,
+                                                                knowledge_graph)
+        sample_tool_knowledge_extractor = SampleToolKnowledgeExtractor(args.repo_url, llm_provider, rag, tools, token_counter,
+                                                                       knowledge_graph)
+        package_list_extractor = PackagesListKnowledgeExtractor(args.repo_url, llm_provider, rag, tools, token_counter,
+                                                                        knowledge_graph)
 
         # Create analyzer
         analyzer = GitHubRepoAnalyzer(
@@ -113,7 +129,14 @@ def main():
             token_counter,
             knowledge_graph,
             git_rag_loader,
-            dependencies_knowledge_extractor,
+            [
+                # simple_knowledge_extractor,
+                # dependencies_knowledge_extractor,
+                # classes_knowledge_extractor,
+                # sample_tool_knowledge_extractor,
+                package_list_extractor,
+                # overall_knowledge_extractor
+            ],
             args.repo_url,
             repo_name,
             args.max_files,
@@ -152,10 +175,10 @@ def main():
         sys.exit(1)
 
 
-def get_llm_provider(provider_type: str, api_key: str, model: str, embedding_model: str, ollama_base_url: str):
+def get_llm_provider(tools: Tools, provider_type: str, model: str, api_key: str, ollama_base_url: str):
     # Create LLM provider with model
     if provider_type == "openai":
-        llm_provider = create_llm_provider("openai", model=model, embedding_model=embedding_model, api_key=api_key)
+        llm_provider = create_llm_provider(tools, "openai", model=model, api_key=api_key)
         # For OpenAI, we still need API key for embeddings
         api_key = api_key or os.getenv("OPENAI_API_KEY")
         if not api_key:
@@ -164,8 +187,30 @@ def get_llm_provider(provider_type: str, api_key: str, model: str, embedding_mod
                 "or pass api_key parameter."
             )
     elif provider_type == "ollama":
-        llm_provider = create_llm_provider("ollama", model=model, embedding_model=embedding_model,
+        llm_provider = create_llm_provider(tools, "ollama", model=model,
                                            base_url=ollama_base_url)
+        # For Ollama, embeddings still use OpenAI (can be extended later)
+        api_key = api_key or os.getenv("OPENAI_API_KEY")
+    else:
+        raise ValueError(f"Unknown provider type: {provider_type}. Supported: 'openai', 'ollama'")
+
+    return llm_provider
+
+
+def get_embedding_provider(provider_type: str, embedding_model: str, api_key: str, ollama_base_url: str):
+    # Create LLM provider with model
+    if provider_type == "openai":
+        llm_provider = create_embeddings_provider("openai", embedding_model=embedding_model, api_key=api_key)
+        # For OpenAI, we still need API key for embeddings
+        api_key = api_key or os.getenv("OPENAI_API_KEY")
+        if not api_key:
+            raise ValueError(
+                "OpenAI API key not provided. Set OPENAI_API_KEY environment variable "
+                "or pass api_key parameter."
+            )
+    elif provider_type == "ollama":
+        llm_provider = create_embeddings_provider("ollama", embedding_model=embedding_model,
+                                                  base_url=ollama_base_url)
         # For Ollama, embeddings still use OpenAI (can be extended later)
         api_key = api_key or os.getenv("OPENAI_API_KEY")
     else:
@@ -181,7 +226,7 @@ def get_repo_name(repo_url: str) -> str:
     return repo_name
 
 
-def get_rag_embedder(repo_name: str, llm_provider: LLMProvider, db_path: str = None) -> RAGEmbedder:
+def get_rag_embedder(repo_name: str, llm_provider: EmbeddingsProvider, db_path: str = None) -> RAGEmbedder:
     embedder = RAGEmbedder(llm_provider.get_embeddings(), db_path)
     embedder.initialize_db(repo_name)
     return embedder

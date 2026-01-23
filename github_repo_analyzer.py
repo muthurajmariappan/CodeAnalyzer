@@ -27,7 +27,7 @@ class GitHubRepoAnalyzer:
                  token_counter: TokenCounter,
                  knowledge_graph: KnowledgeGraph,
                  git_rag_loader: GitRAGLoader,
-                 knowledge_extractor: KnowledgeExtractor,
+                 knowledge_extractors: [KnowledgeExtractor],
                  repo_url: str,
                  repo_name: str,
                  max_files: int):
@@ -47,7 +47,7 @@ class GitHubRepoAnalyzer:
         self.token_counter = token_counter
         self.knowledge_graph = knowledge_graph
         self.git_rag_loader = git_rag_loader
-        self.knowledge_extractor = knowledge_extractor
+        self.knowledge_extractors = knowledge_extractors
 
     def cleanup(self):
         """Clean up temporary files."""
@@ -68,9 +68,10 @@ class GitHubRepoAnalyzer:
         try:
             files_content = self.git_rag_loader.load_files_to_rag()
             # Extract knowledge using LLM with RAG
-            knowledge = self.knowledge_extractor.extract(files_content)
+            for ke in self.knowledge_extractors:
+                ke.extract(files_content)
 
-            return knowledge
+            return {}
 
         finally:
             # Always cleanup

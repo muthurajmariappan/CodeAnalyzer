@@ -1,11 +1,12 @@
-import json
 from typing import Dict
 
 from base_knowledge_extractor import KnowledgeExtractor
+from knowledge_graph import KnowledgeGraph
 from llm_providers import LLMProvider
 from rag_embedder import RAGEmbedder
 from token_counter import TokenCounter
-from knowledge_graph import KnowledgeGraph
+from tools import Tools
+
 
 class SimpleKnowledgeExtractor(KnowledgeExtractor):
 
@@ -13,8 +14,22 @@ class SimpleKnowledgeExtractor(KnowledgeExtractor):
                  repo_url: str,
                  llm_provider: LLMProvider,
                  rag: RAGEmbedder,
+                 tools: Tools,
                  token_counter: TokenCounter,
                  knowledge_graph: KnowledgeGraph):
+        super().__init__(
+            [
+                {
+                    "role": "system",
+                    "content": "You are an expert software engineer and code analyst. You analyze codebases and "
+                               "extract structured knowledge about their architecture, design, and implementation. "
+                               "Always respond with valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": ""
+                }
+            ], rag, tools, token_counter, llm_provider, knowledge_graph, "s-")
         self.repo_url = repo_url
         self.llm_provider = llm_provider
         self.rag = rag
@@ -63,88 +78,12 @@ class SimpleKnowledgeExtractor(KnowledgeExtractor):
         files_text = self.token_counter.optimize_content(files_text, max_tokens, reserve_tokens)
         print(f"files content after optimizing {len(files_text)}")
 
-        prompt = f"""Analyze the following codebase from a GitHub repository (https://github.com/codejsha/spring-rest-sakila) and extract structured knowledge.
+        prompt = f"""Analyze the following codebase from a GitHub repository {self.repo_url} and extract structured knowledge.
 The README file contents in markdown format of the repository are added below. 
-Analyze the content and provide concise description of the project.
+Based on the information provided, think and provide an appropriate description of this repository.
+The description should include the purpose of the repository and high level technical details like architecture, frameworks, programming languages.
 {files_text}
 """
         self.execute_prompt(prompt, max_tokens)
 
         return result
-
-    def execute_prompt(self, prompt: str, max_tokens: int):
-        try:
-            # Count tokens in prompt
-            prompt_tokens = self.token_counter.count_tokens(prompt)
-            print(f"Prompt tokens: {prompt_tokens}, Max tokens: {max_tokens}")
-
-            # Prepare messages
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are an expert software engineer and code analyst. You analyze codebases and extract structured knowledge about their architecture, design, and implementation. Always respond with valid JSON."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-
-            # Calculate max response tokens
-            max_response_tokens = min(4000, max_tokens - prompt_tokens - 100)
-
-            # Generate response using LangChain provider
-            # For JSON format, add instruction to prompt if not OpenAI
-            if self.llm_provider.get_provider_type() != "openai":
-                messages[-1][
-                    "content"] += "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text outside the JSON object."
-
-            with open("D:\\self\\CodeAnalyzer\\out\\" + "s-prompt.txt", "w", encoding='utf-8') as file:
-                file.write(prompt)
-
-            with open("D:\\self\\CodeAnalyzer\\out\\" + "s-messages.txt", "w", encoding='utf-8') as file:
-                file.write(str(messages))
-
-            print("invoking llm")
-            result_text = self.llm_provider.invoke_with_messages(
-                messages=messages,
-                temperature=0.3,
-                max_tokens=max_response_tokens
-            )
-
-            print(f"response from llm {str(result_text)}")
-            with open("D:\\self\\CodeAnalyzer\\out\\" + "s-llm-response.txt", "w", encoding='utf-8') as file:
-                file.write(str(result_text))
-
-            # Parse JSON response
-            knowledge = json.loads(result_text)
-
-            # Build knowledge graph from extracted knowledge
-            self.knowledge_graph.extract_from_knowledge(knowledge, self.repo_url)
-
-            # Add knowledge graph to results
-            knowledge["knowledge_graph"] = self.knowledge_graph.to_dict()
-
-            print("Analysis complete!")
-            return knowledge
-
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse JSON response: {e}")
-            print(f"Response was: {result_text[:500]}")
-            raise RuntimeError(f"LLM returned invalid JSON: {e}")
-        except Exception as e:
-            raise RuntimeError(f"Failed to extract knowledge with LLM: {e}")
-
-    def initialize_messages(self) -> []:
-        # Prepare messages
-        messages = [
-            {
-                "role": "system",
-                "content": "You are an expert software engineer and code analyst. You analyze codebases and extract structured knowledge about their architecture, design, and implementation. Always respond with valid JSON."
-            },
-            {
-                "role": "user",
-                "content": ""
-            }
-        ]
-        return messages

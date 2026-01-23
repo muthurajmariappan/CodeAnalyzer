@@ -7,11 +7,12 @@ Handles RAG (Retrieval-Augmented Generation) with embeddings using LangChain.
 import os
 import shutil
 import tempfile
-from typing import Dict, List, Any
+from pathlib import Path
+from typing import Dict, List, Any, Optional
 
 from langchain_chroma import Chroma
 from langchain_core.embeddings import Embeddings
-from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langchain_text_splitters import RecursiveCharacterTextSplitter, Language
 
 
 class RAGEmbedder:
@@ -27,11 +28,17 @@ class RAGEmbedder:
         self.embeddings = embeddings
 
         # Initialize text splitter
-        self.text_splitter = RecursiveCharacterTextSplitter(
+        # self.text_splitter = RecursiveCharacterTextSplitter(
+        #     chunk_size=1000,
+        #     chunk_overlap=200,
+        #     length_function=len,
+        #     separators=["\n\n", "\n", " ", ""]
+        # )
+        self.text_splitter = RecursiveCharacterTextSplitter.from_language(
+            language=Language.JAVA,
             chunk_size=1000,
             chunk_overlap=200,
             length_function=len,
-            separators=["\n\n", "\n", " ", ""]
         )
         
         # Vector store
@@ -48,7 +55,9 @@ class RAGEmbedder:
         
         # Create collection name
         collection_name = f"repo_{repo_name.replace('/', '_').replace('-', '_')}"
-        
+
+        print(f"vector store collection {collection_name}")
+
         # Initialize empty vector store
         self.vectorstore = Chroma(
             collection_name=collection_name,
@@ -69,21 +78,28 @@ class RAGEmbedder:
         
         # Create documents with metadata
         # Use split_documents or create_documents for proper Document objects
-        print(f"inside embed_and_store for {file_path}")
+        # print(f"inside embed_and_store for {file_path}")
+        metadata = {"file_path": file_path, "source": file_path}
+        if file_path.endswith(".java"):
+            metadata["class_name"] = Path(file_path).name
+            metadata["is_class"] = True
+
         documents = self.text_splitter.create_documents(
             texts=[content],
-            metadatas=[{
-                "file_path": file_path,
-                "source": file_path
-            }]
+            metadatas=[metadata]
         )
+
+        # print(f"{len(documents)} documents for {file_path}")
+
+        with open("D:\\self\\CodeAnalyzer\\out\\docs\\" + Path(file_path).name + ".txt", "w", encoding='utf-8') as file:
+            file.write(str(documents))
         
         # Add documents to vector store
         if documents:
             print(f"adding documents to vector store inside embed_and_store for {file_path}")
             self.vectorstore.add_documents(documents)
     
-    def retrieve_relevant_chunks(self, query: str, n_results: int = 5) -> List[Dict[str, Any]]:
+    def retrieve_relevant_chunks(self, query: str, filter: Optional[Dict[str, Any]] = None, n_results: int = 5) -> List[Dict[str, Any]]:
         """
         Retrieve relevant chunks using semantic search.
         
@@ -98,12 +114,14 @@ class RAGEmbedder:
             return []
         
         try:
+            print(f"retrieve_relevant_chunks -> query({query}), filter({filter})")
             # Use similarity search with metadata
             results = self.vectorstore.similarity_search_with_score(
                 query,
+                filter=filter,
                 k=n_results
             )
-            
+            print(f"results from vector store -> {len(results)}")
             # Format results
             retrieved_chunks = []
             for doc, score in results:

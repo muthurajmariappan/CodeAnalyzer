@@ -8,15 +8,17 @@ from abc import ABC, abstractmethod
 from typing import Dict, List, Optional
 
 from langchain_core.embeddings import Embeddings
+from langchain_core.messages import AIMessage
 from langchain_ollama import OllamaEmbeddings
 from langchain_openai import OpenAIEmbeddings
+from tools import Tools
 
 
 class LLMProvider(ABC):
     """Abstract base class for LLM providers using LangChain."""
 
     @abstractmethod
-    def invoke(self, prompt: str, **kwargs) -> str:
+    def invoke(self, prompt: str, **kwargs) -> AIMessage:
         """
         Invoke the LLM with a prompt.
         
@@ -30,7 +32,7 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> str:
+    def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> AIMessage:
         """
         Invoke the LLM with a list of messages.
         
@@ -57,12 +59,12 @@ class LLMProvider(ABC):
         pass
 
     @abstractmethod
-    def get_embeddings(self) -> Embeddings:
+    def get_llm(self):
         """
-        Get the LangChain Embeddings instance
+        Get the LLM instance
 
         Returns:
-            LangChain Embeddings instance
+            LLM instance
         """
 
     @abstractmethod
@@ -84,11 +86,21 @@ class LLMProvider(ABC):
         """
 
 
+class EmbeddingsProvider(ABC):
+    @abstractmethod
+    def get_embeddings(self) -> Embeddings:
+        """
+        Get the LangChain Embeddings instance
+
+        Returns:
+            LangChain Embeddings instance
+        """
+
+
 class OpenAIProvider(LLMProvider):
     """OpenAI LLM provider using LangChain."""
 
-    def __init__(self, api_key: Optional[str] = None, model: str = "gpt-4o-mini",
-                 embedding_model: str = "text-embedding-3-small"):
+    def __init__(self, tools: Tools, api_key: Optional[str] = None, model: str = "gpt-4o-mini"):
         """
         Initialize OpenAI provider.
         
@@ -113,18 +125,17 @@ class OpenAIProvider(LLMProvider):
             )
 
         self.model = model
-        self.embedding_model = embedding_model
         self.llm = ChatOpenAI(
             model=model,
             api_key=self.api_key,
-            temperature=0.3
+            temperature=0
         )
 
-    def invoke(self, prompt: str, **kwargs) -> str:
+    def invoke(self, prompt: str, **kwargs) -> AIMessage:
         """Invoke the LLM with a prompt."""
         return self.llm.invoke(prompt, **kwargs).content
 
-    def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> str:
+    def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> AIMessage:
         """Invoke the LLM with messages."""
         from langchain_core.messages import HumanMessage, SystemMessage, AIMessage
 
@@ -142,7 +153,7 @@ class OpenAIProvider(LLMProvider):
                 langchain_messages.append(AIMessage(content=content))
 
         response = self.llm.invoke(langchain_messages, **kwargs)
-        return response.content
+        return response
 
     def get_max_tokens(self) -> int:
         """Get maximum context tokens for OpenAI models."""
@@ -156,11 +167,8 @@ class OpenAIProvider(LLMProvider):
         }
         return max_tokens_map.get(self.model, 4096)  # Default conservative limit
 
-    def get_embeddings(self) -> Embeddings:
-        return OpenAIEmbeddings(
-            model=self.embedding_model,
-            openai_api_key=self.api_key
-        )
+    def get_llm(self):
+        return self.llm
 
     def get_model(self) -> str:
         return self.model
@@ -172,8 +180,7 @@ class OpenAIProvider(LLMProvider):
 class OllamaProvider(LLMProvider):
     """Ollama LLM provider using LangChain."""
 
-    def __init__(self, model: str = "llama3.2", embedding_model: str = "embeddinggemma",
-                 base_url: str = "http://localhost:11434"):
+    def __init__(self, tools: Tools, model: str = "llama3.2", base_url: str = "http://localhost:11434"):
         """
         Initialize Ollama provider.
         
@@ -183,7 +190,7 @@ class OllamaProvider(LLMProvider):
         """
         try:
             from langchain_community.llms import Ollama
-            from langchain_community.chat_models import ChatOllama
+            from langchain_ollama import ChatOllama
         except ImportError:
             raise ImportError(
                 "langchain-community package is required for Ollama provider. "
@@ -194,20 +201,19 @@ class OllamaProvider(LLMProvider):
         print('#####model - ' + model)
 
         self.model = model
-        self.embedding_model = embedding_model
         self.base_url = base_url
         self.llm = ChatOllama(
             model=self.model,
             base_url=base_url,
             temperature=0.3
-        )
+        ).bind_tools([tools.tools_definition()])
 
-    def invoke(self, prompt: str, **kwargs) -> str:
+    def invoke(self, prompt: str, **kwargs) -> AIMessage:
         """Invoke the LLM with a prompt."""
         print(f"invoking ollama with {len(prompt)} length")
         return self.llm.invoke(prompt, **kwargs)
 
-    def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> str:
+    def invoke_with_messages(self, messages: List[Dict[str, str]], **kwargs) -> AIMessage:
         """Invoke the LLM with messages."""
         # Convert messages to a single prompt for Ollama
         print(f"inside invoke_with_messages of ollama with {len(messages)} messages")
@@ -244,10 +250,8 @@ class OllamaProvider(LLMProvider):
         """
         return 32768  # Default for most modern open source models
 
-    def get_embeddings(self) -> Embeddings:
-        return OllamaEmbeddings(
-            model=self.embedding_model,  # llama3.2:1b
-        )
+    def get_llm(self):
+        return self.llm
 
     def get_model(self) -> str:
         return self.model
@@ -256,11 +260,12 @@ class OllamaProvider(LLMProvider):
         return "ollama"
 
 
-def create_llm_provider(provider_type: str, model: str, embedding_model: str, **kwargs) -> LLMProvider:
+def create_llm_provider(tools: Tools, provider_type: str, model: str, **kwargs) -> LLMProvider:
     """
     Factory function to create an LLM provider.
     
     Args:
+        tools: Tools for tool calling
         provider_type: Type of provider ('openai' or 'ollama')
         model: Model name to use
         **kwargs: Provider-specific arguments
@@ -272,13 +277,44 @@ def create_llm_provider(provider_type: str, model: str, embedding_model: str, **
 
     if provider_type == "openai":
         return OpenAIProvider(
+            tools,
             api_key=kwargs.get("api_key"),
-            model=model,
-            embedding_model=embedding_model
+            model=model
         )
     elif provider_type == "ollama":
         return OllamaProvider(
+            tools,
             model=model,
+            base_url=kwargs.get("base_url", "http://localhost:11434")
+        )
+    else:
+        raise ValueError(
+            f"Unknown provider type: {provider_type}. "
+            "Supported types: 'openai', 'ollama'"
+        )
+
+
+def create_embeddings_provider(provider_type: str, embedding_model: str, **kwargs) -> EmbeddingsProvider:
+    """
+    Factory function to create an EmbeddingsProvider provider.
+
+    Args:
+        provider_type: Type of provider ('openai' or 'ollama')
+        embedding_model: Embedding Model name to use
+        **kwargs: Provider-specific arguments
+
+    Returns:
+        EmbeddingsProvider instance
+    """
+    provider_type = provider_type.lower()
+
+    if provider_type == "openai":
+        return OpenAIEmbeddingsProvider(
+            embedding_model=embedding_model,
+            api_key=kwargs.get("api_key"),
+        )
+    elif provider_type == "ollama":
+        return OllamaEmbeddingsProvider(
             embedding_model=embedding_model,
             base_url=kwargs.get("base_url", "http://localhost:11434")
         )
@@ -286,4 +322,29 @@ def create_llm_provider(provider_type: str, model: str, embedding_model: str, **
         raise ValueError(
             f"Unknown provider type: {provider_type}. "
             "Supported types: 'openai', 'ollama'"
+        )
+
+
+class OpenAIEmbeddingsProvider(EmbeddingsProvider):
+    def __init__(self, api_key: Optional[str] = None, embedding_model: str = "text-embedding-3-small"):
+        self.api_key = api_key or os.getenv("OPENAI_API_KEY")
+        self.embedding_model = embedding_model
+
+    def get_embeddings(self) -> Embeddings:
+        return OpenAIEmbeddings(
+            model=self.embedding_model,
+            openai_api_key=self.api_key
+        )
+
+
+class OllamaEmbeddingsProvider(EmbeddingsProvider):
+
+    def __init__(self, embedding_model: str = "embeddinggemma",
+                 base_url: str = "http://localhost:11434"):
+        self.embedding_model = embedding_model
+        self.base_url = base_url
+
+    def get_embeddings(self) -> Embeddings:
+        return OllamaEmbeddings(
+            model=self.embedding_model,  # llama3.2:1b
         )

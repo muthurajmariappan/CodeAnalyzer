@@ -1,11 +1,11 @@
-import json
 from typing import Dict
 
 from base_knowledge_extractor import KnowledgeExtractor
+from knowledge_graph import KnowledgeGraph
 from llm_providers import LLMProvider
 from rag_embedder import RAGEmbedder
 from token_counter import TokenCounter
-from knowledge_graph import KnowledgeGraph
+from tools import Tools
 
 
 class OverallKnowledgeExtractor(KnowledgeExtractor):
@@ -14,8 +14,22 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
                  repo_url: str,
                  llm_provider: LLMProvider,
                  rag: RAGEmbedder,
+                 tools: Tools,
                  token_counter: TokenCounter,
                  knowledge_graph: KnowledgeGraph):
+        super().__init__(
+            [
+                {
+                    "role": "system",
+                    "content": "You are an expert software engineer and code analyst. You analyze codebases and "
+                               "extract structured knowledge about their architecture, design, and implementation. "
+                               "Always respond with valid JSON."
+                },
+                {
+                    "role": "user",
+                    "content": ""
+                }
+            ], rag, tools, token_counter, llm_provider, knowledge_graph, "o-")
         self.repo_url = repo_url
         self.llm_provider = llm_provider
         self.rag = rag
@@ -36,6 +50,8 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
             print("Analyzing repository with LLM using RAG...")
         else:
             print("Analyzing repository with LLM...")
+
+        result = {}
 
         # Get model token limits from provider
         max_tokens = self.llm_provider.get_max_tokens()
@@ -115,10 +131,12 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
         # Create a comprehensive prompt
         rag_note = ""
         if self.rag is not None:
-            rag_note = "\nThe repository has been analyzed using RAG (Retrieval-Augmented Generation) to identify the most relevant code sections.\n"
+            rag_note = ("\nThe repository has been analyzed using RAG (Retrieval-Augmented Generation) to identify the "
+                        "most relevant code sections.\n")
 
         prompt = \
-        f"""Analyze the following codebase from a GitHub repository ({self.repo_url}) and extract structured knowledge.{rag_note}
+            f"""Analyze the following codebase from a GitHub repository ({self.repo_url}) and extract structured 
+            knowledge.{rag_note}
         Repository Files and Relevant Code Sections:
         {files_text}
         
@@ -161,63 +179,6 @@ class OverallKnowledgeExtractor(KnowledgeExtractor):
         - How components interact
         """
 
-        try:
-            # Count tokens in prompt
-            prompt_tokens = self.token_counter.count_tokens(prompt)
-            print(f"Prompt tokens: {prompt_tokens}, Max tokens: {max_tokens}")
+        result_text = self.execute_prompt(prompt, max_tokens)
 
-            # Prepare messages
-            messages = [
-                {
-                    "role": "system",
-                    "content": "You are an expert software engineer and code analyst. You analyze codebases and extract structured knowledge about their architecture, design, and implementation. Always respond with valid JSON."
-                },
-                {
-                    "role": "user",
-                    "content": prompt
-                }
-            ]
-
-            # Calculate max response tokens
-            max_response_tokens = min(4000, max_tokens - prompt_tokens - 100)
-
-            # Generate response using LangChain provider
-            # For JSON format, add instruction to prompt if not OpenAI
-            if self.llm_provider.get_provider_type() != "openai":
-                messages[-1][
-                    "content"] += "\n\nIMPORTANT: Respond ONLY with valid JSON. Do not include any text outside the JSON object."
-
-            with open("D:\\self\\CodeAnalyzer\\out\\" + "o-prompt.txt", "w", encoding='utf-8') as file:
-                file.write(prompt)
-
-            with open("D:\\self\\CodeAnalyzer\\out\\" + "o-messages.txt", "w", encoding='utf-8') as file:
-                file.write(str(messages))
-
-            print("invoking llm")
-            result_text = self.llm_provider.invoke_with_messages(
-                messages=messages,
-                temperature=0.3,
-                max_tokens=max_response_tokens
-            )
-
-            print(f"response from llm {str(result_text)}")
-            print(f"response from llm {result_text.content}")
-
-            # Parse JSON response
-            knowledge = json.loads(result_text)
-
-            # Build knowledge graph from extracted knowledge
-            self.knowledge_graph.extract_from_knowledge(knowledge, self.repo_url)
-
-            # Add knowledge graph to results
-            knowledge["knowledge_graph"] = self.knowledge_graph.to_dict()
-
-            print("Analysis complete!")
-            return knowledge
-
-        except json.JSONDecodeError as e:
-            print(f"Warning: Failed to parse JSON response: {e}")
-            print(f"Response was: {result_text[:500]}")
-            raise RuntimeError(f"LLM returned invalid JSON: {e}")
-        except Exception as e:
-            raise RuntimeError(f"Failed to extract knowledge with LLM: {e}")
+        return result

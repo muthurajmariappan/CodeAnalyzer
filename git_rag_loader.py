@@ -94,7 +94,7 @@ class GitRAGLoader:
             dirs[:] = [d for d in dirs if not any(
                 pattern in d.lower() for pattern in ignore_patterns
             )]
-            print(f"{len(filenames)} {filenames} files discovered")
+            # print(f"{len(filenames)} {filenames} files discovered")
             for filename in filenames:
                 if file_count >= self.max_files:
                     print(f"Reached maximum file limit ({self.max_files}). Stopping for {filename}.")
@@ -115,9 +115,6 @@ class GitRAGLoader:
                     try:
                         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
                             content = f.read()
-                            # Limit file size to avoid token limits
-                            if len(content) > 100000:  # ~100KB
-                                content = content[:100000] + "\n... (truncated)"
                             files_content[str(relative_path)] = content
                             print(f"{relative_path} with size {len(content)} added to files")
                             file_count += 1
@@ -139,7 +136,6 @@ class GitRAGLoader:
         total_files = len(files_content)
 
         for i, (file_path, content) in enumerate(files_content.items(), 1):
-            # if i % 10 == 0:
             print(f"Embedding progress: {i}/{total_files} files...")
             try:
                 if not file_path.endswith("sql"):
