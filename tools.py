@@ -38,7 +38,7 @@ class Tools:
             },
             "strict": True
         }
-        return fetch_packages_schema
+        return [fetch_class_data_schema, fetch_packages_schema]
 
     def tools(self):
         @tool
@@ -93,7 +93,8 @@ class Tools:
             files_text_parts = []
             # Add retrieved chunks
             for chunk in unique_chunks:
-                chunk_text = f"{chunk['metadata'].get('file_path', 'unknown')} \n{chunk['content']}\n\n"
+                text: str = chunk['content']
+                chunk_text = f"{text.split(";")[0]};\n"
                 files_text_parts.append(chunk_text)
 
             files_text = "".join(files_text_parts)

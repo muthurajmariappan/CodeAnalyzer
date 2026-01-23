@@ -205,8 +205,8 @@ class OllamaProvider(LLMProvider):
         self.llm = ChatOllama(
             model=self.model,
             base_url=base_url,
-            temperature=0.3
-        ).bind_tools([tools.tools_definition()])
+            temperature=0
+        ).bind_tools(tools.tools_definition())
 
     def invoke(self, prompt: str, **kwargs) -> AIMessage:
         """Invoke the LLM with a prompt."""

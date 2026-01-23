@@ -133,7 +133,7 @@ def main():
                 # simple_knowledge_extractor,
                 # dependencies_knowledge_extractor,
                 # classes_knowledge_extractor,
-                # sample_tool_knowledge_extractor,
+                sample_tool_knowledge_extractor,
                 package_list_extractor,
                 # overall_knowledge_extractor
             ],

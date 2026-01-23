@@ -23,6 +23,11 @@ class SampleToolKnowledgeExtractor(KnowledgeExtractor):
                     "role": "system",
                     "content": "You are an expert software engineer and code analyst. You analyze codebases and "
                                "extract structured knowledge about their architecture, design, and implementation. "
+                               f"Analyze the following codebase from a GitHub repository {repo_url} and extract "
+                               "structured knowledge."
+                               "The contents of the repository are parsed and stored in a vector store. There are "
+                               "tools available to fetch details from the vector store."
+                               "DO NOT MAKE UP INFORMATION. USE AVAILABLE TOOLS TO FETCH DATA AND MAKE INFERENCES."
                                "Always respond with valid JSON."
                 },
                 {
@@ -48,12 +53,7 @@ class SampleToolKnowledgeExtractor(KnowledgeExtractor):
         available_tokens = max_tokens - reserve_tokens
         result = {}
 
-        prompt = f"""Analyze the codebase from the GitHub repository {self.repo_url} and extract structured 
-knowledge. The contents of the repository are parsed and stored in a vector store. There are tools available 
-to fetch details from the vector store.
-For any query, use the tools to fetch relevant information. 
-
-Fetch details about class ActorController and provide a comprehensive analysis in JSON format with the following structure:
+        prompt = f"""Fetch details about class ActorController and provide a comprehensive analysis in JSON format with the following structure:
 {{
     "description" : <a brief description of the class>,
     "package" : <the package to which this class belongs>,

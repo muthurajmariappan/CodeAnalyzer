@@ -53,7 +53,8 @@ class PackagesListKnowledgeExtractor(KnowledgeExtractor):
         available_tokens = max_tokens - reserve_tokens
         result = {}
 
-        prompt = f"""Fetch details about packages in the repository and provide a comprehensive analysis in JSON format with the following structure:
+        prompt = f"""Fetch details about packages in the repository and provide a comprehensive analysis in JSON format with the following structure.
+Only the java package names. DO NOT INCLUDE CLASSES. INCLUDE ONLY UNIQUE VALUES.        
 {{
     "packageList" : <list of packages in the repository>
 }}
